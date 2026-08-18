@@ -430,15 +430,15 @@ body {
   text-align: center;
   color: var(--faint);
   padding: 40px 0 32px;
-  animation: rise-in 0.5s var(--ease-out) both;
+  overflow: hidden;
 }
 
 /* ---------- Footer ---------- */
 
 .footer {
-  display: flex;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
   align-items: center;
-  justify-content: space-between;
   gap: 12px;
   margin-top: 18px;
   font-size: 13px;
@@ -446,18 +446,13 @@ body {
   animation: rise-in 0.5s var(--ease-out) both;
 }
 
-.count {
-  min-width: 52px;
+.footer .filters {
+  grid-column: 2;
 }
 
-.count.tick {
-  animation: tick 0.3s var(--ease-spring);
-}
-
-@keyframes tick {
-  0%   { scale: 1; }
-  50%  { scale: 1.12; }
-  100% { scale: 1; }
+.footer .clear {
+  grid-column: 3;
+  justify-self: end;
 }
 
 .filters {

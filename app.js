@@ -9,7 +9,6 @@ const enterHint = document.getElementById("enter-hint");
 const parseChip = document.getElementById("parse-chip");
 const emptyEl = document.getElementById("empty");
 const footerEl = document.getElementById("footer");
-const countEl = document.getElementById("count");
 const clearBtn = document.getElementById("clear-done");
 const filtersEl = document.getElementById("filters");
 const filterIndicator = document.getElementById("filter-indicator");
@@ -181,6 +180,8 @@ function expand(node) {
         paddingTop: "0px",
         paddingBottom: "0px",
         marginBottom: "0px",
+        borderTopWidth: "0px",
+        borderBottomWidth: "0px",
         opacity: 0,
         transform: "translateY(-8px) scale(0.98)",
       },
@@ -189,6 +190,8 @@ function expand(node) {
         paddingTop: "14px",
         paddingBottom: "14px",
         marginBottom: "8px",
+        borderTopWidth: "2px",
+        borderBottomWidth: "2px",
         opacity: 1,
         transform: "none",
       },
@@ -213,6 +216,8 @@ function collapse(node, { slide = false } = {}) {
         paddingTop: "0px",
         paddingBottom: "0px",
         marginBottom: "0px",
+        borderTopWidth: "0px",
+        borderBottomWidth: "0px",
         opacity: 0,
         transform: slide ? "translateX(32px)" : "none",
         offset: 1,
@@ -487,16 +492,58 @@ function emptyMessage() {
     : "Nothing planned for this day yet.";
 }
 
-function refreshChrome() {
-  const remaining = todos.filter((t) => !t.done && matchesDay(t)).length;
-  const label = `${remaining} left`;
-  if (countEl.textContent !== label) {
-    countEl.textContent = label;
-    countEl.classList.remove("tick");
-    void countEl.offsetWidth; // restart the pulse animation
-    countEl.classList.add("tick");
+// Slide the empty-state message open or closed so the footer below it
+// moves with the same rhythm as the list items.
+function setEmptyVisible(show) {
+  const showing = !emptyEl.hidden && emptyEl.dataset.vis !== "hiding";
+  if (show === showing) return;
+  emptyEl.getAnimations().forEach((a) => a.cancel());
+  if (show) {
+    delete emptyEl.dataset.vis;
+    emptyEl.hidden = false;
+    if (reduceMotion.matches) return;
+    const height = emptyEl.offsetHeight;
+    emptyEl.animate(
+      [
+        { height: "0px", paddingTop: "0px", paddingBottom: "0px", opacity: 0 },
+        {
+          height: `${height}px`,
+          paddingTop: "40px",
+          paddingBottom: "32px",
+          opacity: 1,
+        },
+      ],
+      { duration: 320, easing: EASE_OUT, delay: 120, fill: "backwards" }
+    );
+  } else if (reduceMotion.matches) {
+    emptyEl.hidden = true;
+  } else {
+    emptyEl.dataset.vis = "hiding";
+    const height = emptyEl.offsetHeight;
+    const animation = emptyEl.animate(
+      [
+        {
+          height: `${height}px`,
+          paddingTop: "40px",
+          paddingBottom: "32px",
+          opacity: 1,
+        },
+        { height: "0px", paddingTop: "0px", paddingBottom: "0px", opacity: 0 },
+      ],
+      { duration: 200, easing: EASE_OUT, fill: "forwards" }
+    );
+    animation.finished
+      .then(() => {
+        if (emptyEl.dataset.vis === "hiding") {
+          emptyEl.hidden = true;
+          delete emptyEl.dataset.vis;
+        }
+      })
+      .catch(() => {});
   }
+}
 
+function refreshChrome() {
   footerEl.hidden = todos.length === 0;
   clearBtn.classList.toggle(
     "hidden",
@@ -504,7 +551,7 @@ function refreshChrome() {
   );
 
   emptyEl.textContent = emptyMessage();
-  emptyEl.hidden = todos.some(visibleNow);
+  setEmptyVisible(!todos.some(visibleNow));
 
   const today = todayKey();
   for (const btn of daysEl.querySelectorAll("button")) {
