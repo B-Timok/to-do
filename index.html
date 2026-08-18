@@ -14,14 +14,19 @@
       <p class="date" id="date"></p>
     </header>
 
+    <nav class="days" id="days" aria-label="Pick a day">
+      <span class="day-indicator" id="day-indicator" aria-hidden="true"></span>
+    </nav>
+
     <form class="composer" id="composer" autocomplete="off">
       <input
         id="new-todo"
         type="text"
-        placeholder="What needs doing?"
+        placeholder="What needs doing? Try @ 3pm or @ fri"
         aria-label="Add a task"
         maxlength="200"
       >
+      <span class="parse-chip" id="parse-chip" aria-hidden="true"></span>
       <span class="enter-hint" id="enter-hint" aria-hidden="true">↵ enter</span>
     </form>
 

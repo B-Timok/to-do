@@ -76,6 +76,90 @@ body {
   margin-top: 2px;
 }
 
+/* ---------- Day strip ---------- */
+
+.days {
+  position: relative;
+  display: flex;
+  gap: 4px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 4px;
+  margin-bottom: 14px;
+  animation: rise-in 0.6s var(--ease-out) 0.04s both;
+}
+
+.days button {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  color: var(--muted);
+  padding: 7px 0 12px;
+  border-radius: 10px;
+  transition: color 0.2s ease;
+}
+
+.days .dow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.days .dom {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--faint);
+  transition: color 0.2s ease;
+}
+
+.days button.active,
+.days button.active .dom {
+  color: var(--text);
+}
+
+/* Small dot marking days that still have open tasks */
+.days button::after {
+  content: "";
+  position: absolute;
+  bottom: 5px;
+  left: 50%;
+  translate: -50% 0;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--faint);
+  opacity: 0;
+  scale: 0;
+  transition: opacity 0.25s ease, scale 0.25s var(--ease-spring);
+}
+
+.days button.has-tasks::after {
+  opacity: 1;
+  scale: 1;
+}
+
+.day-indicator {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 0;
+  width: 0;
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 10px;
+  transition: translate 0.3s var(--ease-spring), width 0.3s var(--ease-spring);
+}
+
 /* ---------- Composer ---------- */
 
 .composer {
@@ -90,7 +174,7 @@ body {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius);
   outline: none;
   transition: border-color 0.25s ease, box-shadow 0.25s ease;
@@ -113,7 +197,7 @@ body {
   font-size: 12px;
   color: var(--muted);
   background: var(--surface-hover);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: 7px;
   padding: 3px 8px;
   opacity: 0;
@@ -123,6 +207,30 @@ body {
 }
 
 .enter-hint.show {
+  opacity: 1;
+  scale: 1;
+}
+
+/* Live preview of the parsed @ day/time while typing */
+.parse-chip {
+  position: absolute;
+  right: 90px;
+  top: 50%;
+  translate: 0 -50%;
+  font-size: 12px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.08);
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  padding: 2px 10px;
+  white-space: nowrap;
+  opacity: 0;
+  scale: 0.9;
+  transition: opacity 0.2s ease, scale 0.2s var(--ease-spring);
+  pointer-events: none;
+}
+
+.parse-chip.show {
   opacity: 1;
   scale: 1;
 }
@@ -148,11 +256,16 @@ body {
   padding: 14px 16px;
   margin-bottom: 8px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
   transition: border-color 0.2s ease, background 0.2s ease,
     translate 0.2s var(--ease-out);
+}
+
+/* .item's display:flex would otherwise override the hidden attribute */
+.item[hidden] {
+  display: none;
 }
 
 .item:hover {
@@ -255,6 +368,29 @@ body {
   color: var(--text);
 }
 
+/* Scheduled day/time chip */
+
+.when {
+  flex: none;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--item-accent);
+  border: 2px solid color-mix(in srgb, var(--item-accent) 40%, transparent);
+  border-radius: 999px;
+  padding: 1px 9px;
+  white-space: nowrap;
+  transition: opacity 0.3s ease;
+}
+
+.item.done .when {
+  opacity: 0.45;
+}
+
+.when.overdue {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+}
+
 /* Delete button */
 
 .delete {
@@ -329,7 +465,7 @@ body {
   display: flex;
   gap: 2px;
   background: var(--surface);
-  border: 1px solid var(--border);
+  border: 2px solid var(--border);
   border-radius: 10px;
   padding: 3px;
 }
@@ -359,7 +495,7 @@ body {
   left: 0;
   width: 0;
   background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.22);
+  border: 2px solid rgba(255, 255, 255, 0.22);
   border-radius: 7px;
   transition: translate 0.3s var(--ease-spring), width 0.3s var(--ease-spring);
 }

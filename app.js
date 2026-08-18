@@ -6,33 +6,83 @@ const list = document.getElementById("list");
 const composer = document.getElementById("composer");
 const input = document.getElementById("new-todo");
 const enterHint = document.getElementById("enter-hint");
+const parseChip = document.getElementById("parse-chip");
 const emptyEl = document.getElementById("empty");
 const footerEl = document.getElementById("footer");
 const countEl = document.getElementById("count");
 const clearBtn = document.getElementById("clear-done");
 const filtersEl = document.getElementById("filters");
-const indicator = document.getElementById("filter-indicator");
+const filterIndicator = document.getElementById("filter-indicator");
+const daysEl = document.getElementById("days");
+const dayIndicator = document.getElementById("day-indicator");
 const dateEl = document.getElementById("date");
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
 const PALETTE_SIZE = 6;
 
+const WEEKDAYS = {
+  sun: 0, sunday: 0,
+  mon: 1, monday: 1,
+  tue: 2, tues: 2, tuesday: 2,
+  wed: 3, weds: 3, wednesday: 3,
+  thu: 4, thur: 4, thurs: 4, thursday: 4,
+  fri: 5, friday: 5,
+  sat: 6, saturday: 6,
+};
+
+/* ---------- Dates ---------- */
+
+function toKey(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function todayKey() {
+  return toKey(new Date());
+}
+
+function keyPlus(offset) {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return toKey(d);
+}
+
+function dateOf(key) {
+  const [y, m, d] = key.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function weekdayLabel(key) {
+  return dateOf(key).toLocaleDateString(undefined, { weekday: "short" });
+}
+
+function formatTime(time) {
+  const [h, min] = time.split(":").map(Number);
+  const suffix = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 || 12;
+  return min ? `${h12}:${String(min).padStart(2, "0")}${suffix}` : `${h12}${suffix}`;
+}
+
+/* ---------- State ---------- */
+
 let todos = load();
 let filter = "all";
+let selectedDay = todayKey();
 const nodes = new Map(); // todo id -> <li>
-
-const EMPTY_MESSAGES = {
-  all: "Nothing here yet. Add your first task above.",
-  active: "All caught up.",
-  done: "Nothing checked off yet.",
-};
 
 function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!Array.isArray(raw)) return [];
-    return raw.map((t, i) => ({ color: i % PALETTE_SIZE, ...t }));
+    return raw.map((t, i) => ({
+      color: i % PALETTE_SIZE,
+      day: todayKey(),
+      time: null,
+      ...t,
+    }));
   } catch {
     return [];
   }
@@ -42,9 +92,27 @@ function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
 }
 
-// Active tasks first, completed sink to the bottom; creation order within each.
+// DOM order: open tasks before done, earlier days (overdue) first,
+// timed tasks by time before untimed, then creation order.
 function sorted() {
-  return [...todos.filter((t) => !t.done), ...todos.filter((t) => t.done)];
+  return todos
+    .map((t, i) => [t, i])
+    .sort(([a, ai], [b, bi]) => {
+      if (a.done !== b.done) return a.done - b.done;
+      if (a.day !== b.day) return a.day < b.day ? -1 : 1;
+      const at = a.time ?? "~";
+      const bt = b.time ?? "~";
+      if (at !== bt) return at < bt ? -1 : 1;
+      return ai - bi;
+    })
+    .map(([t]) => t);
+}
+
+function matchesDay(todo) {
+  if (todo.day === selectedDay) return true;
+  // Tasks from past days roll into Today rather than disappearing.
+  const today = todayKey();
+  return selectedDay === today && todo.day < today;
 }
 
 function matchesFilter(todo) {
@@ -53,10 +121,56 @@ function matchesFilter(todo) {
   return true;
 }
 
+function visibleNow(todo) {
+  return matchesDay(todo) && matchesFilter(todo);
+}
+
+/* ---------- @ parsing ---------- */
+
+function parseSpec(spec, defaultDay) {
+  let day = null;
+  let time = null;
+  for (const token of spec.toLowerCase().split(/\s+/)) {
+    if (!token) continue;
+    if (token === "today") {
+      day = todayKey();
+    } else if (token === "tomorrow" || token === "tmrw" || token === "tom") {
+      day = keyPlus(1);
+    } else if (token in WEEKDAYS) {
+      day = keyPlus((WEEKDAYS[token] - new Date().getDay() + 7) % 7);
+    } else {
+      const m = token.match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/);
+      if (!m) return null;
+      let h = Number(m[1]);
+      const min = Number(m[2] ?? 0);
+      if (h > 23 || min > 59) return null;
+      if (m[3] === "pm" && h < 12) h += 12;
+      else if (m[3] === "am" && h === 12) h = 0;
+      else if (!m[3] && !m[2] && h >= 1 && h <= 7) h += 12; // bare "3" reads as 3pm
+      time = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+    }
+  }
+  if (day === null && time === null) return null;
+  return { day: day ?? defaultDay, time };
+}
+
+// Splits "Call the bank @ fri 3pm" into text plus day/time. An @ chunk
+// that doesn't parse is left in the text untouched.
+function parseInput(raw, defaultDay) {
+  const match = raw.match(/(?:^|\s)@([^@]*)$/);
+  if (match) {
+    const text = raw.slice(0, match.index).trim();
+    const parsed = parseSpec(match[1].trim(), defaultDay);
+    if (parsed && text) return { text, ...parsed };
+  }
+  return { text: raw.trim(), day: defaultDay, time: null };
+}
+
 /* ---------- Animation helpers ---------- */
 
 function expand(node) {
   node.getAnimations().forEach((a) => a.cancel());
+  delete node.dataset.vis;
   node.hidden = false;
   if (reduceMotion.matches) return;
   const height = node.offsetHeight;
@@ -106,14 +220,20 @@ function collapse(node, { slide = false } = {}) {
     ],
     { duration: 340, easing: EASE_OUT, fill: "forwards" }
   );
-  // A cancelled animation (e.g. the filter flipped back mid-collapse and
+  // A cancelled animation (e.g. the view flipped back mid-collapse and
   // expand() took over) rejects `finished`; treat that as a quiet no-op.
   return animation.finished.catch(() => {});
 }
 
+function applyOrder() {
+  for (const todo of sorted()) list.appendChild(nodes.get(todo.id));
+}
+
 // Reorder visible items to match sorted() order, animating position changes.
 function reorderWithFlip() {
-  const visible = [...list.children].filter((n) => !n.hidden);
+  const visible = [...list.children].filter(
+    (n) => !n.hidden && n.dataset.vis !== "hiding"
+  );
   const before = new Map(visible.map((n) => [n, n.getBoundingClientRect().top]));
   applyOrder();
   if (reduceMotion.matches) return;
@@ -128,8 +248,31 @@ function reorderWithFlip() {
   }
 }
 
-function applyOrder() {
-  for (const todo of sorted()) list.appendChild(nodes.get(todo.id));
+// Collapse a node and mark it hidden, unless expand() reclaims it while
+// the animation is still running (the "hiding" flag is how they hand off).
+function hideAway(node) {
+  node.dataset.vis = "hiding";
+  return collapse(node).then(() => {
+    if (node.dataset.vis === "hiding") {
+      node.hidden = true;
+      delete node.dataset.vis;
+    }
+  });
+}
+
+// Expand/collapse items so the list matches the selected day and filter.
+function refreshVisibility() {
+  for (const todo of todos) {
+    const node = nodes.get(todo.id);
+    const shouldShow = visibleNow(todo);
+    const showing = !node.hidden && node.dataset.vis !== "hiding";
+    if (shouldShow && !showing) {
+      expand(node);
+    } else if (!shouldShow && showing) {
+      hideAway(node);
+    }
+  }
+  refreshChrome();
 }
 
 /* ---------- Item lifecycle ---------- */
@@ -155,50 +298,68 @@ function createNode(todo) {
   label.addEventListener("dblclick", () => startEdit(todo, li, label));
   text.append(label);
 
+  const when = document.createElement("span");
+  when.className = "when";
+
   const del = document.createElement("button");
   del.className = "delete";
   del.setAttribute("aria-label", "Delete task");
   del.textContent = "×";
   del.addEventListener("click", () => remove(todo, li));
 
-  li.append(check, text, del);
+  li.append(check, text, when, del);
   nodes.set(todo.id, li);
+  renderWhen(todo);
   return li;
 }
 
-function addTodo(text) {
+function renderWhen(todo) {
+  const el = nodes.get(todo.id).querySelector(".when");
+  const overdue = !todo.done && todo.day < todayKey();
+  const parts = [];
+  if (overdue) parts.push(weekdayLabel(todo.day));
+  if (todo.time) parts.push(formatTime(todo.time));
+  el.textContent = parts.join(" ");
+  el.hidden = parts.length === 0;
+  el.classList.toggle("overdue", overdue);
+}
+
+function addTodo(raw) {
+  const { text, day, time } = parseInput(raw, selectedDay);
   const last = todos[todos.length - 1];
   const color = last ? (last.color + 1) % PALETTE_SIZE : 0;
-  const todo = { id: Date.now().toString(36), text, done: false, color };
+  const todo = { id: Date.now().toString(36), text, done: false, color, day, time };
   todos.push(todo);
   save();
 
-  // Adding while viewing "Done" would hide the new task — jump back to "All".
-  if (filter === "done") setFilter("all");
-
   const node = createNode(todo);
-  const firstDone = [...list.children].find((n) =>
-    n.classList.contains("done")
-  );
-  list.insertBefore(node, firstDone ?? null);
-  expand(node);
-  refreshChrome();
+  node.hidden = true;
+  list.appendChild(node);
+  applyOrder();
+
+  // Follow the task so it never lands somewhere invisible.
+  if (filter === "done") setFilterState("all");
+  if (day !== selectedDay) setDayState(day);
+  refreshVisibility();
 }
 
 function toggle(todo, node) {
   todo.done = !todo.done;
   node.classList.toggle("done", todo.done);
+  renderWhen(todo);
   save();
 
-  if (matchesFilter(todo)) {
+  if (visibleNow(todo)) {
     reorderWithFlip();
     refreshChrome();
   } else {
     // Let the check animation play before the item slips away.
     setTimeout(async () => {
-      await collapse(node);
-      if (!matchesFilter(todo)) {
-        node.hidden = true;
+      if (visibleNow(todo)) {
+        // The view changed during the pause and the item belongs here now.
+        reorderWithFlip();
+      } else {
+        await hideAway(node);
         applyOrder();
       }
       refreshChrome();
@@ -215,26 +376,35 @@ async function remove(todo, node) {
   refreshChrome();
 }
 
-function startEdit(todo, li, text) {
-  if (text.isContentEditable) return;
+function startEdit(todo, li, label) {
+  if (label.isContentEditable) return;
   const original = todo.text;
-  text.contentEditable = "true";
-  text.focus();
-  getSelection().selectAllChildren(text);
+  label.contentEditable = "true";
+  label.focus();
+  getSelection().selectAllChildren(label);
 
   const finish = (commit) => {
-    text.contentEditable = "false";
-    text.removeEventListener("blur", onBlur);
-    text.removeEventListener("keydown", onKey);
-    const value = text.textContent.trim();
+    label.contentEditable = "false";
+    label.removeEventListener("blur", onBlur);
+    label.removeEventListener("keydown", onKey);
+    const value = label.textContent.trim();
     if (commit && value) {
-      todo.text = value;
-      text.textContent = value;
+      const parsed = parseInput(value, todo.day);
+      todo.text = parsed.text;
+      // Only reschedule when the edit actually contained an @ chunk.
+      if (parsed.text !== value) {
+        todo.day = parsed.day;
+        todo.time = parsed.time;
+      }
+      label.textContent = todo.text;
+      renderWhen(todo);
       save();
+      reorderWithFlip();
+      refreshVisibility();
     } else if (commit && !value) {
       remove(todo, li);
     } else {
-      text.textContent = original;
+      label.textContent = original;
     }
   };
   const onBlur = () => finish(true);
@@ -242,50 +412,83 @@ function startEdit(todo, li, text) {
     if (e.key === "Enter" || e.key === "Escape") {
       e.preventDefault();
       finish(e.key === "Enter");
-      text.blur();
+      label.blur();
     }
   };
 
-  text.addEventListener("blur", onBlur);
-  text.addEventListener("keydown", onKey);
+  label.addEventListener("blur", onBlur);
+  label.addEventListener("keydown", onKey);
 }
 
-/* ---------- Filters ---------- */
+/* ---------- Day strip and filters ---------- */
 
-function setFilter(next) {
-  if (next === filter) return;
-  filter = next;
+function buildDays() {
+  for (let i = 0; i < 7; i++) {
+    const key = keyPlus(i);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.dataset.day = key;
 
-  for (const button of filtersEl.querySelectorAll("button")) {
-    button.classList.toggle("active", button.dataset.filter === filter);
+    const dow = document.createElement("span");
+    dow.className = "dow";
+    dow.textContent = i === 0 ? "Today" : weekdayLabel(key);
+    const dom = document.createElement("span");
+    dom.className = "dom";
+    dom.textContent = String(dateOf(key).getDate());
+
+    btn.append(dow, dom);
+    btn.addEventListener("click", () => setDay(key));
+    daysEl.appendChild(btn);
   }
-  moveIndicator();
-
-  for (const todo of todos) {
-    const node = nodes.get(todo.id);
-    const shouldShow = matchesFilter(todo);
-    if (shouldShow && node.hidden) {
-      expand(node);
-    } else if (!shouldShow && !node.hidden) {
-      collapse(node).then(() => {
-        // The filter may have changed again mid-animation.
-        if (!matchesFilter(todo)) node.hidden = true;
-      });
-    }
-  }
-  refreshChrome();
 }
 
-function moveIndicator() {
-  const active = filtersEl.querySelector("button.active");
+function positionIndicator(container, indicator) {
+  const active = container.querySelector("button.active");
+  if (!active) return;
   indicator.style.width = `${active.offsetWidth}px`;
   indicator.style.translate = `${active.offsetLeft}px 0`;
 }
 
-/* ---------- Chrome (count, empty state, footer) ---------- */
+function setDayState(key) {
+  selectedDay = key;
+  for (const btn of daysEl.querySelectorAll("button")) {
+    btn.classList.toggle("active", btn.dataset.day === key);
+  }
+  positionIndicator(daysEl, dayIndicator);
+}
+
+function setDay(key) {
+  if (key === selectedDay) return;
+  setDayState(key);
+  refreshVisibility();
+}
+
+function setFilterState(next) {
+  filter = next;
+  for (const btn of filtersEl.querySelectorAll("button")) {
+    btn.classList.toggle("active", btn.dataset.filter === filter);
+  }
+  positionIndicator(filtersEl, filterIndicator);
+}
+
+function setFilter(next) {
+  if (next === filter) return;
+  setFilterState(next);
+  refreshVisibility();
+}
+
+/* ---------- Chrome (count, empty state, footer, day dots) ---------- */
+
+function emptyMessage() {
+  if (filter === "active") return "All caught up.";
+  if (filter === "done") return "Nothing checked off yet.";
+  return selectedDay === todayKey()
+    ? "Nothing here yet. Add your first task above."
+    : "Nothing planned for this day yet.";
+}
 
 function refreshChrome() {
-  const remaining = todos.filter((t) => !t.done).length;
+  const remaining = todos.filter((t) => !t.done && matchesDay(t)).length;
   const label = `${remaining} left`;
   if (countEl.textContent !== label) {
     countEl.textContent = label;
@@ -295,34 +498,59 @@ function refreshChrome() {
   }
 
   footerEl.hidden = todos.length === 0;
-  clearBtn.classList.toggle("hidden", remaining === todos.length);
+  clearBtn.classList.toggle(
+    "hidden",
+    !todos.some((t) => t.done && matchesDay(t))
+  );
 
-  const anyVisible = todos.some(matchesFilter);
-  emptyEl.textContent = EMPTY_MESSAGES[filter];
-  emptyEl.hidden = anyVisible;
+  emptyEl.textContent = emptyMessage();
+  emptyEl.hidden = todos.some(visibleNow);
 
-  if (!footerEl.hidden) requestAnimationFrame(moveIndicator);
+  const today = todayKey();
+  for (const btn of daysEl.querySelectorAll("button")) {
+    const key = btn.dataset.day;
+    const has = todos.some(
+      (t) => !t.done && (t.day === key || (key === today && t.day < today))
+    );
+    btn.classList.toggle("has-tasks", has);
+  }
+
+  if (!footerEl.hidden) {
+    requestAnimationFrame(() => positionIndicator(filtersEl, filterIndicator));
+  }
 }
 
-/* ---------- Wiring ---------- */
+/* ---------- Composer wiring ---------- */
+
+function refreshComposerChips() {
+  const value = input.value;
+  enterHint.classList.toggle("show", value.trim().length > 0);
+
+  const { day, time } = parseInput(value, selectedDay);
+  const parts = [];
+  if (day !== selectedDay) {
+    parts.push(day === todayKey() ? "Today" : weekdayLabel(day));
+  }
+  if (time) parts.push(formatTime(time));
+  parseChip.textContent = parts.join(" ");
+  parseChip.classList.toggle("show", parts.length > 0);
+}
 
 composer.addEventListener("submit", (e) => {
   e.preventDefault();
-  const text = input.value.trim();
-  if (!text) return;
-  addTodo(text);
+  const raw = input.value;
+  if (!raw.trim()) return;
+  addTodo(raw);
   input.value = "";
-  enterHint.classList.remove("show");
+  refreshComposerChips();
 });
 
-input.addEventListener("input", () => {
-  enterHint.classList.toggle("show", input.value.trim().length > 0);
-});
+input.addEventListener("input", refreshComposerChips);
 
 input.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     input.value = "";
-    enterHint.classList.remove("show");
+    refreshComposerChips();
   }
 });
 
@@ -332,8 +560,8 @@ filtersEl.addEventListener("click", (e) => {
 });
 
 clearBtn.addEventListener("click", () => {
-  const done = todos.filter((t) => t.done);
-  todos = todos.filter((t) => !t.done);
+  const done = todos.filter((t) => t.done && matchesDay(t));
+  todos = todos.filter((t) => !done.includes(t));
   save();
   done.forEach((todo, i) => {
     const node = nodes.get(todo.id);
@@ -347,7 +575,10 @@ clearBtn.addEventListener("click", () => {
   refreshChrome();
 });
 
-addEventListener("resize", moveIndicator);
+addEventListener("resize", () => {
+  positionIndicator(daysEl, dayIndicator);
+  positionIndicator(filtersEl, filterIndicator);
+});
 
 /* ---------- Init ---------- */
 
@@ -357,10 +588,13 @@ dateEl.textContent = new Date().toLocaleDateString(undefined, {
   day: "numeric",
 });
 
+buildDays();
+setDayState(todayKey());
 for (const todo of sorted()) {
   const node = createNode(todo);
-  node.hidden = !matchesFilter(todo);
+  node.hidden = !visibleNow(todo);
   list.appendChild(node);
 }
 refreshChrome();
+requestAnimationFrame(() => positionIndicator(daysEl, dayIndicator));
 input.focus();
