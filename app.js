@@ -15,6 +15,9 @@ const filterIndicator = document.getElementById("filter-indicator");
 const daysEl = document.getElementById("days");
 const dayIndicator = document.getElementById("day-indicator");
 const dateEl = document.getElementById("date");
+const toastEl = document.getElementById("toast");
+const toastMsg = document.getElementById("toast-msg");
+const toastUndo = document.getElementById("toast-undo");
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -315,6 +318,56 @@ function refreshVisibility() {
   refreshChrome();
 }
 
+/* ---------- Undo ---------- */
+
+const undoStack = [];
+let toastTimer = null;
+
+function showToast(message) {
+  toastMsg.textContent = message;
+  toastEl.classList.add("show");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(hideToast, 5000);
+}
+
+function hideToast() {
+  clearTimeout(toastTimer);
+  toastEl.classList.remove("show");
+}
+
+function pushUndo(removed, message) {
+  undoStack.push(removed);
+  if (undoStack.length > 20) undoStack.shift();
+  showToast(message);
+}
+
+function undo() {
+  const removed = undoStack.pop();
+  if (!removed) return;
+  todos.push(...removed);
+  save();
+  for (const todo of removed) {
+    const node = createNode(todo);
+    node.hidden = true;
+    list.appendChild(node);
+  }
+  applyOrder();
+  // If the restored tasks live outside the current view, follow them.
+  if (!removed.some(visibleNow)) {
+    const first = removed[0];
+    if (!matchesDay(first)) setDayState(first.day);
+    if (!matchesFilter(first)) setFilterState("all");
+  }
+  refreshVisibility();
+  hideToast();
+}
+
+function undoLabel(todo) {
+  const text =
+    todo.text.length > 28 ? todo.text.slice(0, 28).trimEnd() + "..." : todo.text;
+  return `Deleted "${text}"`;
+}
+
 /* ---------- Item lifecycle ---------- */
 
 function createNode(todo) {
@@ -422,6 +475,7 @@ async function remove(todo, node) {
   todos = todos.filter((t) => t !== todo);
   nodes.delete(todo.id);
   save();
+  pushUndo([todo], undoLabel(todo));
   await collapse(node, { slide: true });
   node.remove();
   refreshChrome();
@@ -463,6 +517,9 @@ function startEdit(todo, li, label) {
   const onKey = (e) => {
     if (e.key === "Enter" || e.key === "Escape") {
       e.preventDefault();
+      // finish() ends editing before this event reaches the global
+      // keyboard handler, which would otherwise act on the same press.
+      e.stopPropagation();
       finish(e.key === "Enter");
       label.blur();
     }
@@ -471,6 +528,148 @@ function startEdit(todo, li, label) {
   label.addEventListener("blur", onBlur);
   label.addEventListener("keydown", onKey);
 }
+
+/* ---------- Keyboard selection ---------- */
+
+let selectedId = null;
+
+function visibleNodes() {
+  return [...list.children].filter(
+    (n) => !n.hidden && n.dataset.vis !== "hiding"
+  );
+}
+
+function setSelected(id) {
+  selectedId = id;
+  for (const n of list.children) {
+    n.classList.toggle("selected", id !== null && n.dataset.id === id);
+  }
+  if (id) {
+    nodes.get(id)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+function selectedTodo() {
+  return todos.find((t) => t.id === selectedId) ?? null;
+}
+
+// Swap the selected task with its neighbor in the day's manual order.
+function nudgeSelected(dir) {
+  const todo = selectedTodo();
+  if (!todo || todo.done) return;
+  const seq = sorted().filter((t) => !t.done && t.day === todo.day);
+  const i = seq.indexOf(todo);
+  const j = i + dir;
+  if (i === -1 || j < 0 || j >= seq.length) return;
+  [seq[i], seq[j]] = [seq[j], seq[i]];
+  seq.forEach((t, k) => {
+    t.order = k;
+  });
+  save();
+  reorderWithFlip();
+}
+
+function cycleFilter() {
+  const order = ["all", "active", "done"];
+  setFilter(order[(order.indexOf(filter) + 1) % order.length]);
+}
+
+addEventListener("keydown", (e) => {
+  const typing = e.target === input || e.target.isContentEditable;
+
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+    if (typing) return; // leave text-field undo to the browser
+    e.preventDefault();
+    undo();
+    return;
+  }
+
+  if (typing) {
+    // Arrow down from an empty composer drops into the list.
+    if (e.target === input && e.key === "ArrowDown" && !input.value) {
+      const first = visibleNodes()[0];
+      if (first) {
+        e.preventDefault();
+        input.blur();
+        setSelected(first.dataset.id);
+      }
+    }
+    return;
+  }
+  if (e.ctrlKey || e.metaKey) return;
+
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const dir = e.key === "ArrowDown" ? 1 : -1;
+    if (e.altKey) {
+      nudgeSelected(dir);
+      return;
+    }
+    const items = visibleNodes();
+    if (!items.length) return;
+    const idx = items.findIndex((n) => n.dataset.id === selectedId);
+    const next =
+      idx === -1
+        ? dir === 1
+          ? 0
+          : items.length - 1
+        : Math.max(0, Math.min(items.length - 1, idx + dir));
+    setSelected(items[next].dataset.id);
+    return;
+  }
+
+  const onButton = !!e.target.closest("button");
+  const todo = selectedTodo();
+  switch (e.key) {
+    case "Enter":
+    case " ": {
+      if (onButton || !todo) return; // buttons keep their native activation
+      e.preventDefault();
+      const items = visibleNodes();
+      const idx = items.findIndex((n) => n.dataset.id === selectedId);
+      toggle(todo, nodes.get(todo.id));
+      // If the toggle will hide the task from this view, step the
+      // selection to whichever neighbor takes its place.
+      if (!matchesFilter(todo)) {
+        const next = items[idx + 1] ?? items[idx - 1];
+        setSelected(next ? next.dataset.id : null);
+      }
+      return;
+    }
+    case "e":
+      if (todo) {
+        e.preventDefault();
+        const node = nodes.get(todo.id);
+        startEdit(todo, node, node.querySelector(".label"));
+      }
+      return;
+    case "Backspace":
+    case "Delete": {
+      if (!todo) return;
+      e.preventDefault();
+      const items = visibleNodes();
+      const idx = items.findIndex((n) => n.dataset.id === selectedId);
+      const next = items[idx + 1] ?? items[idx - 1];
+      remove(todo, nodes.get(todo.id));
+      setSelected(next ? next.dataset.id : null);
+      return;
+    }
+    case "Escape":
+      setSelected(null);
+      return;
+    case "n":
+    case "/":
+      e.preventDefault();
+      input.focus();
+      return;
+    case "f":
+      e.preventDefault();
+      cycleFilter();
+      return;
+    default:
+      if (/^[1-7]$/.test(e.key)) setDay(keyPlus(Number(e.key) - 1));
+  }
+});
 
 /* ---------- Drag to reorder ---------- */
 
@@ -485,6 +684,7 @@ function dragCandidates() {
 }
 
 function initDrag(todo, li, e) {
+  setSelected(todo.id); // pointer and keyboard share one selection
   if (e.button !== 0 || e.pointerType === "touch") return; // touch keeps scrolling
   if (todo.done) return;
   if (e.target.closest("button") || e.target.isContentEditable) return;
@@ -735,6 +935,13 @@ function refreshChrome() {
     btn.classList.toggle("has-tasks", has);
   }
 
+  if (selectedId) {
+    const node = nodes.get(selectedId);
+    if (!node || node.hidden || node.dataset.vis === "hiding") {
+      setSelected(null);
+    }
+  }
+
   if (!footerEl.hidden) {
     requestAnimationFrame(() => positionIndicator(filtersEl, filterIndicator));
   }
@@ -781,8 +988,13 @@ filtersEl.addEventListener("click", (e) => {
 
 clearBtn.addEventListener("click", () => {
   const done = todos.filter((t) => t.done && matchesDay(t));
+  if (!done.length) return;
   todos = todos.filter((t) => !done.includes(t));
   save();
+  pushUndo(
+    done,
+    done.length === 1 ? undoLabel(done[0]) : `Cleared ${done.length} done tasks`
+  );
   done.forEach((todo, i) => {
     const node = nodes.get(todo.id);
     nodes.delete(todo.id);
@@ -794,6 +1006,8 @@ clearBtn.addEventListener("click", () => {
   });
   refreshChrome();
 });
+
+toastUndo.addEventListener("click", undo);
 
 addEventListener("resize", () => {
   positionIndicator(daysEl, dayIndicator);
@@ -818,3 +1032,7 @@ for (const todo of sorted()) {
 refreshChrome();
 requestAnimationFrame(() => positionIndicator(daysEl, dayIndicator));
 input.focus();
+
+if ("serviceWorker" in navigator && location.protocol !== "file:") {
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+}

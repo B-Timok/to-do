@@ -12,7 +12,21 @@ A minimal to-do list on a pure black background. Each task gets a flat accent co
 - **Edit**: double-click a task's text. Include an `@` chunk to reschedule it
 - **Delete**: hover a task and hit the x
 - **Filter**: All / Active / Done within the selected day, plus one-click "Clear done"
+- **Undo**: deleting or clearing shows an Undo toast; Ctrl+Z (or Cmd+Z) also works, up to 20 steps back
 - **Persistence**: tasks are saved to `localStorage`
+- **Install**: it's a PWA. Install it from the browser menu for a standalone app window; it works fully offline
+
+## Keyboard
+
+- **Down** from the empty input drops into the list; **Up / Down** move the selection
+- **Enter** or **Space**: complete the selected task
+- **E**: edit the selected task
+- **Backspace** or **Delete**: delete the selected task
+- **Alt+Up / Alt+Down**: move the selected task within the day
+- **1 to 7**: jump to a day (1 is today)
+- **F**: cycle All / Active / Done
+- **N** or **/**: focus the input; **Escape**: clear the selection
+- **Ctrl+Z / Cmd+Z**: undo
 
 ## Animation details
 

@@ -268,6 +268,13 @@ body {
   display: none;
 }
 
+/* Keyboard selection */
+
+.item.selected {
+  border-color: rgba(255, 255, 255, 0.45);
+  background: var(--surface-hover);
+}
+
 /* Drag to reorder */
 
 .item.dragging {
@@ -538,6 +545,52 @@ body.is-dragging {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
+}
+
+/* ---------- Undo toast ---------- */
+
+.toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  translate: -50% 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface-hover);
+  border: 2px solid var(--border-hover);
+  border-radius: 999px;
+  padding: 10px 8px 10px 18px;
+  font-size: 14px;
+  color: var(--text);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, translate 0.3s var(--ease-spring);
+  z-index: 20;
+}
+
+.toast.show {
+  opacity: 1;
+  translate: -50% 0;
+  pointer-events: auto;
+}
+
+.toast button {
+  border: none;
+  background: rgba(250, 204, 21, 0.12);
+  color: var(--yellow);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.toast button:hover {
+  background: rgba(250, 204, 21, 0.22);
 }
 
 /* ---------- Shared ---------- */
