@@ -474,6 +474,28 @@ body.is-dragging {
   animation: rise-in 0.5s var(--ease-out) both;
 }
 
+.footer .data {
+  grid-column: 1;
+  display: flex;
+  gap: 4px;
+}
+
+.footer .data button {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  padding: 4px 6px;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.footer .data button:hover {
+  color: var(--text);
+}
+
 .footer .filters {
   grid-column: 2;
 }

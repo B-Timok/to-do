@@ -14,7 +14,8 @@ A minimal to-do list on a pure black background. Each task gets a flat accent co
 - **Delete**: hover a task and hit the x
 - **Filter**: All / Active / Done within the selected day, plus one-click "Clear done"
 - **Undo**: deleting or clearing shows an Undo toast; Ctrl+Z (or Cmd+Z) also works, up to 20 steps back
-- **Persistence**: tasks are saved to `localStorage`
+- **Persistence**: tasks are saved to `localStorage`, and the app asks the browser to protect that storage from automatic eviction
+- **Backup**: Export in the footer downloads your tasks as JSON; Import restores from a backup (replacing the current list, with Undo available)
 - **Install**: it's a PWA. Install it from the browser menu for a standalone app window; it works fully offline
 
 ## Keyboard

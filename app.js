@@ -8,7 +8,6 @@ const input = document.getElementById("new-todo");
 const enterHint = document.getElementById("enter-hint");
 const parseChip = document.getElementById("parse-chip");
 const emptyEl = document.getElementById("empty");
-const footerEl = document.getElementById("footer");
 const clearBtn = document.getElementById("clear-done");
 const filtersEl = document.getElementById("filters");
 const filterIndicator = document.getElementById("filter-indicator");
@@ -18,6 +17,9 @@ const dateEl = document.getElementById("date");
 const toastEl = document.getElementById("toast");
 const toastMsg = document.getElementById("toast-msg");
 const toastUndo = document.getElementById("toast-undo");
+const exportBtn = document.getElementById("export");
+const importBtn = document.getElementById("import");
+const importFile = document.getElementById("import-file");
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
@@ -75,36 +77,53 @@ let filter = "all";
 let selectedDay = todayKey();
 const nodes = new Map(); // todo id -> <li>
 
+// Coerce untrusted task data (stored or imported) into well-formed
+// items; returns null when the input isn't a task list at all.
+function normalizeItems(raw) {
+  if (!Array.isArray(raw)) return null;
+  const items = raw
+    .filter(
+      (t) =>
+        t && typeof t === "object" && typeof t.text === "string" && t.text.trim()
+    )
+    .map((t, i) => ({
+      id: typeof t.id === "string" ? t.id : `${Date.now().toString(36)}-${i}`,
+      text: t.text.trim(),
+      done: t.done === true,
+      color: Number.isInteger(t.color)
+        ? ((t.color % PALETTE_SIZE) + PALETTE_SIZE) % PALETTE_SIZE
+        : i % PALETTE_SIZE,
+      day: /^\d{4}-\d{2}-\d{2}$/.test(t.day) ? t.day : todayKey(),
+      time: /^\d{2}:\d{2}$/.test(t.time) ? t.time : null,
+      repeat: ["daily", "weekly", "weekdays"].includes(t.repeat)
+        ? t.repeat
+        : null,
+      order: typeof t.order === "number" ? t.order : undefined,
+    }));
+  // Items without a manual order get numbered by the old implicit sort:
+  // within a day, timed before untimed, then creation.
+  if (items.some((t) => typeof t.order !== "number")) {
+    const counters = {};
+    items
+      .map((t, i) => [t, i])
+      .sort(([a, ai], [b, bi]) => {
+        if (a.day !== b.day) return a.day < b.day ? -1 : 1;
+        if (a.done !== b.done) return a.done - b.done;
+        const at = a.time ?? "~";
+        const bt = b.time ?? "~";
+        if (at !== bt) return at < bt ? -1 : 1;
+        return ai - bi;
+      })
+      .forEach(([t]) => {
+        t.order = counters[t.day] = (counters[t.day] ?? -1) + 1;
+      });
+  }
+  return items;
+}
+
 function load() {
   try {
-    const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    if (!Array.isArray(raw)) return [];
-    const items = raw.map((t, i) => ({
-      color: i % PALETTE_SIZE,
-      day: todayKey(),
-      time: null,
-      repeat: null,
-      ...t,
-    }));
-    // Items saved before manual ordering existed get numbered by the old
-    // implicit sort: within a day, timed before untimed, then creation.
-    if (items.some((t) => typeof t.order !== "number")) {
-      const counters = {};
-      items
-        .map((t, i) => [t, i])
-        .sort(([a, ai], [b, bi]) => {
-          if (a.day !== b.day) return a.day < b.day ? -1 : 1;
-          if (a.done !== b.done) return a.done - b.done;
-          const at = a.time ?? "~";
-          const bt = b.time ?? "~";
-          if (at !== bt) return at < bt ? -1 : 1;
-          return ai - bi;
-        })
-        .forEach(([t]) => {
-          t.order = counters[t.day] = (counters[t.day] ?? -1) + 1;
-        });
-    }
-    return items;
+    return normalizeItems(JSON.parse(localStorage.getItem(STORAGE_KEY))) ?? [];
   } catch {
     return [];
   }
@@ -367,8 +386,9 @@ function refreshVisibility() {
 const undoStack = [];
 let toastTimer = null;
 
-function showToast(message) {
+function showToast(message, undoable = true) {
   toastMsg.textContent = message;
+  toastUndo.hidden = !undoable;
   toastEl.classList.add("show");
   clearTimeout(toastTimer);
   toastTimer = setTimeout(hideToast, 5000);
@@ -385,9 +405,29 @@ function pushUndo(entry, message) {
   showToast(message);
 }
 
+// Tear down and re-render the whole list from the current todos array.
+function rebuild() {
+  list.textContent = "";
+  nodes.clear();
+  setSelected(null);
+  for (const todo of sorted()) {
+    const node = createNode(todo);
+    node.hidden = !visibleNow(todo);
+    list.appendChild(node);
+  }
+  refreshChrome();
+}
+
 function undo() {
   const entry = undoStack.pop();
   if (!entry) return;
+  if (entry.kind === "replace") {
+    todos = entry.todos;
+    save();
+    rebuild();
+    hideToast();
+    return;
+  }
   let follow;
   if (entry.kind === "delete") {
     todos.push(...entry.todos);
@@ -1016,7 +1056,6 @@ function setEmptyVisible(show) {
 }
 
 function refreshChrome() {
-  footerEl.hidden = todos.length === 0;
   clearBtn.classList.toggle(
     "hidden",
     !todos.some((t) => t.done && matchesDay(t))
@@ -1041,9 +1080,7 @@ function refreshChrome() {
     }
   }
 
-  if (!footerEl.hidden) {
-    requestAnimationFrame(() => positionIndicator(filtersEl, filterIndicator));
-  }
+  requestAnimationFrame(() => positionIndicator(filtersEl, filterIndicator));
 }
 
 /* ---------- Composer wiring ---------- */
@@ -1109,6 +1146,47 @@ clearBtn.addEventListener("click", () => {
 
 toastUndo.addEventListener("click", undo);
 
+exportBtn.addEventListener("click", () => {
+  const payload = {
+    app: "todo",
+    exported: new Date().toISOString(),
+    items: todos,
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], {
+    type: "application/json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `todo-backup-${todayKey()}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+importBtn.addEventListener("click", () => importFile.click());
+
+importFile.addEventListener("change", async () => {
+  const file = importFile.files[0];
+  importFile.value = "";
+  if (!file) return;
+  let items = null;
+  try {
+    const data = JSON.parse(await file.text());
+    items = normalizeItems(Array.isArray(data) ? data : data.items);
+  } catch {}
+  if (!items || !items.length) {
+    showToast("Couldn't read tasks from that file", false);
+    return;
+  }
+  const previous = todos;
+  todos = items;
+  save();
+  rebuild();
+  pushUndo(
+    { kind: "replace", todos: previous },
+    `Imported ${items.length} task${items.length === 1 ? "" : "s"}`
+  );
+});
+
 addEventListener("resize", () => {
   positionIndicator(daysEl, dayIndicator);
   positionIndicator(filtersEl, filterIndicator);
@@ -1124,15 +1202,14 @@ dateEl.textContent = new Date().toLocaleDateString(undefined, {
 
 buildDays();
 setDayState(todayKey());
-for (const todo of sorted()) {
-  const node = createNode(todo);
-  node.hidden = !visibleNow(todo);
-  list.appendChild(node);
-}
-refreshChrome();
+rebuild();
 requestAnimationFrame(() => positionIndicator(daysEl, dayIndicator));
 input.focus();
 
 if ("serviceWorker" in navigator && location.protocol !== "file:") {
   navigator.serviceWorker.register("sw.js").catch(() => {});
 }
+
+// Ask the browser to exempt this origin's storage from automatic
+// eviction (Safari's 7-day cleanup in particular).
+navigator.storage?.persist?.().catch(() => {});
