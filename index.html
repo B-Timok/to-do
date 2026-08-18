@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>todo.</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="aura aura-1" aria-hidden="true"></div>
+  <div class="aura aura-2" aria-hidden="true"></div>
+
+  <main class="app">
+    <header class="header">
+      <h1 class="title">todo<span class="dot">.</span></h1>
+      <p class="date" id="date"></p>
+    </header>
+
+    <form class="composer" id="composer" autocomplete="off">
+      <input
+        id="new-todo"
+        type="text"
+        placeholder="What needs doing?"
+        aria-label="Add a task"
+        maxlength="200"
+      >
+      <span class="enter-hint" id="enter-hint" aria-hidden="true">↵ enter</span>
+    </form>
+
+    <ul class="list" id="list" aria-live="polite"></ul>
+
+    <p class="empty" id="empty" hidden></p>
+
+    <footer class="footer" id="footer" hidden>
+      <span class="count" id="count"></span>
+      <nav class="filters" id="filters" aria-label="Filter tasks">
+        <span class="filter-indicator" id="filter-indicator" aria-hidden="true"></span>
+        <button type="button" data-filter="all" class="active">All</button>
+        <button type="button" data-filter="active">Active</button>
+        <button type="button" data-filter="done">Done</button>
+      </nav>
+      <button type="button" class="clear" id="clear-done">Clear done</button>
+    </footer>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
