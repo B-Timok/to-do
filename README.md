@@ -1,6 +1,6 @@
 # todo.
 
-A minimal, dark-themed to-do list. No frameworks, no build step, no dependencies — just open `index.html`.
+A minimal to-do list on a pure black background. Each task gets a flat accent color — yellow, light blue, orange, lime, purple, peach — in rotation. No frameworks, no build step, no dependencies.
 
 ## Features
 
@@ -14,16 +14,15 @@ A minimal, dark-themed to-do list. No frameworks, no build step, no dependencies
 ## Animation details
 
 - Tasks spring open when added and collapse away when removed
-- Completing a task draws the checkmark, sweeps a strikethrough, and FLIP-animates it to the bottom of the list
+- Completing a task fills the ring with its color, draws the checkmark, sweeps a strikethrough, and FLIP-animates it to the bottom of the list
 - Filter switching slides a pill indicator and expands/collapses tasks in place
 - "Clear done" staggers each task's exit
-- Ambient glows drift slowly behind the page
 - Everything respects `prefers-reduced-motion`
 
 ## Running
 
-Open `index.html` in a browser, or serve the folder:
+There's no build step — opening `index.html` in a browser works. For a local server:
 
 ```sh
-npx serve .
+npm run dev
 ```

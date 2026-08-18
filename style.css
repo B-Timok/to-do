@@ -1,19 +1,26 @@
 :root {
-  --bg: #0a0c10;
-  --surface: #12151b;
-  --surface-hover: #161a22;
-  --border: #222835;
-  --border-hover: #303849;
-  --text: #e8eaf0;
-  --muted: #8b93a5;
-  --faint: #565e70;
-  --accent: #8a7cff;
-  --accent-soft: rgba(138, 124, 255, 0.14);
-  --check-gradient: linear-gradient(135deg, #8a7cff, #6ee7f9);
+  --bg: #000000;
+  --surface: #0e0e0e;
+  --surface-hover: #151515;
+  --border: #232323;
+  --border-hover: #343434;
+  --text: #f0f0f0;
+  --muted: #969696;
+  --faint: #5c5c5c;
+  --focus: rgba(255, 255, 255, 0.35);
+  --focus-soft: rgba(255, 255, 255, 0.08);
   --danger: #f87171;
   --radius: 14px;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* Task accent palette — flat solids, applied per item in rotation */
+  --yellow: #facc15;
+  --light-blue: #7dd3fc;
+  --orange: #fb923c;
+  --lime: #a3e635;
+  --purple: #a78bfa;
+  --salmon: #ffa07a;
 }
 
 * {
@@ -38,45 +45,6 @@ body {
   overflow-x: hidden;
 }
 
-/* Slow-drifting ambient glow behind everything */
-.aura {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(90px);
-  opacity: 0.14;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.aura-1 {
-  width: 480px;
-  height: 480px;
-  top: -160px;
-  left: 50%;
-  background: #8a7cff;
-  animation: drift-1 26s ease-in-out infinite alternate;
-}
-
-.aura-2 {
-  width: 380px;
-  height: 380px;
-  bottom: -140px;
-  left: 10%;
-  background: #2dd4bf;
-  opacity: 0.07;
-  animation: drift-2 32s ease-in-out infinite alternate;
-}
-
-@keyframes drift-1 {
-  from { transform: translate(-70%, 0) scale(1); }
-  to   { transform: translate(-30%, 60px) scale(1.15); }
-}
-
-@keyframes drift-2 {
-  from { transform: translate(0, 0) scale(1); }
-  to   { transform: translate(120px, -40px) scale(1.1); }
-}
-
 .app {
   position: relative;
   z-index: 1;
@@ -99,7 +67,7 @@ body {
 }
 
 .dot {
-  color: var(--accent);
+  color: var(--yellow);
 }
 
 .date {
@@ -133,8 +101,8 @@ body {
 }
 
 #new-todo:focus {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 4px var(--accent-soft);
+  border-color: var(--focus);
+  box-shadow: 0 0 0 4px var(--focus-soft);
 }
 
 .enter-hint {
@@ -165,6 +133,14 @@ body {
   list-style: none;
 }
 
+/* Per-item flat accent, assigned in rotation */
+.item.c0 { --item-accent: var(--yellow); }
+.item.c1 { --item-accent: var(--light-blue); }
+.item.c2 { --item-accent: var(--orange); }
+.item.c3 { --item-accent: var(--lime); }
+.item.c4 { --item-accent: var(--purple); }
+.item.c5 { --item-accent: var(--salmon); }
+
 .item {
   display: flex;
   align-items: center;
@@ -191,7 +167,7 @@ body {
   flex: none;
   width: 24px;
   height: 24px;
-  border: 2px solid var(--faint);
+  border: 2px solid var(--item-accent);
   border-radius: 50%;
   background: transparent;
   cursor: pointer;
@@ -202,14 +178,14 @@ body {
 }
 
 .check:hover {
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--item-accent) 18%, transparent);
 }
 
 .check svg {
   width: 13px;
   height: 13px;
   fill: none;
-  stroke: #0a0c10;
+  stroke: #000000;
   stroke-width: 3.2;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -220,7 +196,7 @@ body {
 
 .item.done .check {
   border-color: transparent;
-  background: var(--check-gradient);
+  background: var(--item-accent);
   animation: pop 0.35s var(--ease-spring);
 }
 
@@ -259,7 +235,7 @@ body {
   top: 50%;
   width: 100%;
   height: 1.5px;
-  background: var(--muted);
+  background: var(--item-accent);
   transform: scaleX(0);
   transform-origin: left center;
   transition: transform 0.35s var(--ease-out);
@@ -275,7 +251,7 @@ body {
 }
 
 .label[contenteditable="true"] {
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  box-shadow: 0 0 0 3px var(--focus-soft);
   color: var(--text);
 }
 
@@ -382,8 +358,8 @@ body {
   bottom: 3px;
   left: 0;
   width: 0;
-  background: var(--accent-soft);
-  border: 1px solid rgba(138, 124, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 7px;
   transition: translate 0.3s var(--ease-spring), width 0.3s var(--ease-spring);
 }
@@ -426,7 +402,7 @@ body {
 }
 
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--focus);
   outline-offset: 2px;
 }
 

@@ -16,6 +16,7 @@ const dateEl = document.getElementById("date");
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+const PALETTE_SIZE = 6;
 
 let todos = load();
 let filter = "all";
@@ -30,7 +31,8 @@ const EMPTY_MESSAGES = {
 function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
-    return Array.isArray(raw) ? raw : [];
+    if (!Array.isArray(raw)) return [];
+    return raw.map((t, i) => ({ color: i % PALETTE_SIZE, ...t }));
   } catch {
     return [];
   }
@@ -134,7 +136,7 @@ function applyOrder() {
 
 function createNode(todo) {
   const li = document.createElement("li");
-  li.className = "item";
+  li.className = `item c${todo.color % PALETTE_SIZE}`;
   if (todo.done) li.classList.add("done");
 
   const check = document.createElement("button");
@@ -165,7 +167,9 @@ function createNode(todo) {
 }
 
 function addTodo(text) {
-  const todo = { id: Date.now().toString(36), text, done: false };
+  const last = todos[todos.length - 1];
+  const color = last ? (last.color + 1) % PALETTE_SIZE : 0;
+  const todo = { id: Date.now().toString(36), text, done: false, color };
   todos.push(todo);
   save();
 
