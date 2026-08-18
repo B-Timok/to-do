@@ -1,22 +1,35 @@
 # todo.
 
-A minimal to-do list on a pure black background. Each task gets a flat accent color (yellow, light blue, orange, lime, purple, peach) in rotation. No frameworks, no build step, no dependencies.
+A minimal to-do list on a pure black background. Each task gets a flat accent color (yellow, light blue, orange, lime, purple, peach) in rotation. Plan the week with a 7-day strip, schedule and repeat tasks with a lightweight `@` syntax, and drive everything from the keyboard. No frameworks, no build step, no dependencies.
 
 ## Features
 
 - **Add**: type and hit enter
-- **Schedule**: end a task with `@` to give it a time, a day, or both. `Call the bank @ 3pm`, `Pack bags @ fri 6pm`, `Dentist @ tomorrow 8am`. A chip previews the parsed day and time as you type. Bare hours like `@ 3` read as 3pm; use `am` or 24-hour times like `@ 15:00` otherwise
-- **Repeat**: add `daily`, `weekly`, `weekdays`, or `every mon` to the `@` chunk. `Gym @ every mon 6pm`, `Journal @ daily 9pm`. Completing a repeating task plays the check, then rolls it to its next occurrence (weekly keeps its weekday, weekdays skips weekends); the toast names the next day and offers Undo. Repeating tasks wear a small repeat mark on their chip. Editing with a plain `@` chunk replaces the whole schedule, repeat included
+- **Schedule**: end a task with `@` to give it a time, a day, or both. A chip previews the parsed schedule as you type
+- **Repeat**: recurring tasks roll themselves forward. Completing one plays the check, then reschedules it to its next occurrence; the toast names the next day and offers Undo
 - **Days**: the strip under the header shows the next 7 days. Click a day to view it or to add tasks to it. Days with open tasks get a dot. Tasks from past days roll into Today, marked with their original day
 - **Reorder**: drag a task up or down to hand-order the day. Timed tasks still slot in by their time when added; a drag overrides that
 - **Complete**: click the ring; done tasks sink to the bottom
-- **Edit**: double-click a task's text. Include an `@` chunk to reschedule it
+- **Edit**: double-click a task's text. Include an `@` chunk to reschedule it (the chunk replaces the whole schedule, repeat included)
 - **Delete**: hover a task and hit the x
 - **Filter**: All / Active / Done within the selected day, plus one-click "Clear done"
-- **Undo**: deleting or clearing shows an Undo toast; Ctrl+Z (or Cmd+Z) also works, up to 20 steps back
-- **Persistence**: tasks are saved to `localStorage`, and the app asks the browser to protect that storage from automatic eviction
+- **Undo**: deleting, clearing, importing, and recurrence rolls all show an Undo toast; Ctrl+Z (or Cmd+Z) also works, up to 20 steps back
 - **Backup**: Export in the footer downloads your tasks as JSON; Import restores from a backup (replacing the current list, with Undo available)
 - **Install**: it's a PWA. Install it from the browser menu for a standalone app window; it works fully offline
+
+## The @ syntax
+
+| Input | Meaning |
+| --- | --- |
+| `Call the bank @ 3pm` | today (or the viewed day) at 3pm |
+| `Pack bags @ fri 6pm` | next Friday at 6pm |
+| `Dentist @ tomorrow 8am` | tomorrow at 8am |
+| `Journal @ daily 9pm` | every day at 9pm |
+| `Gym @ every mon 6pm` | weekly on Monday at 6pm |
+| `Standup @ weekdays 9:30am` | Monday through Friday |
+| `Review @ weekly` | weekly on the task's day |
+
+Bare hours like `@ 3` read as 3pm; use `am` or 24-hour times like `@ 15:00` otherwise. An `@` chunk that doesn't parse (like an email address) is left in the text. Weekly repeats keep their weekday and weekdays repeats skip weekends; an overdue repeat rolls forward from today.
 
 ## Keyboard
 
@@ -47,3 +60,12 @@ There's no build step, so opening `index.html` in a browser works. For a local s
 ```sh
 npm run dev
 ```
+
+## Your data
+
+Tasks live in the browser's `localStorage`. Nothing is sent anywhere. Storage is per-origin, so pick one way of running the app (the installed PWA, or a consistent local URL) and your tasks will be there every time. The app requests persistent storage so the browser protects it from automatic eviction, and Export gives you a portable backup whenever you want one.
+
+## Notes
+
+- Drag to reorder works with mouse and pen; on touchscreens, dragging scrolls the page
+- Files: `index.html`, `style.css`, `app.js` are the whole app; `sw.js` and `manifest.webmanifest` make it installable and offline-capable
