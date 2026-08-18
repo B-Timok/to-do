@@ -76,12 +76,31 @@ function load() {
   try {
     const raw = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (!Array.isArray(raw)) return [];
-    return raw.map((t, i) => ({
+    const items = raw.map((t, i) => ({
       color: i % PALETTE_SIZE,
       day: todayKey(),
       time: null,
       ...t,
     }));
+    // Items saved before manual ordering existed get numbered by the old
+    // implicit sort: within a day, timed before untimed, then creation.
+    if (items.some((t) => typeof t.order !== "number")) {
+      const counters = {};
+      items
+        .map((t, i) => [t, i])
+        .sort(([a, ai], [b, bi]) => {
+          if (a.day !== b.day) return a.day < b.day ? -1 : 1;
+          if (a.done !== b.done) return a.done - b.done;
+          const at = a.time ?? "~";
+          const bt = b.time ?? "~";
+          if (at !== bt) return at < bt ? -1 : 1;
+          return ai - bi;
+        })
+        .forEach(([t]) => {
+          t.order = counters[t.day] = (counters[t.day] ?? -1) + 1;
+        });
+    }
+    return items;
   } catch {
     return [];
   }
@@ -91,20 +110,36 @@ function save() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(todos));
 }
 
-// DOM order: open tasks before done, earlier days (overdue) first,
-// timed tasks by time before untimed, then creation order.
+// DOM order: open tasks before done, earlier days (overdue) first, then
+// each day's manual order (times only pick the initial slot on add).
 function sorted() {
   return todos
     .map((t, i) => [t, i])
     .sort(([a, ai], [b, bi]) => {
       if (a.done !== b.done) return a.done - b.done;
       if (a.day !== b.day) return a.day < b.day ? -1 : 1;
-      const at = a.time ?? "~";
-      const bt = b.time ?? "~";
-      if (at !== bt) return at < bt ? -1 : 1;
+      if (a.order !== b.order) return a.order - b.order;
       return ai - bi;
     })
     .map(([t]) => t);
+}
+
+// Slot a task into its day's open list: timed tasks before the first
+// later-timed task (untimed count as latest), untimed at the end. The
+// whole day is renumbered so drag commits stay simple integers.
+function assignOrder(todo) {
+  const dayActives = sorted().filter(
+    (t) => t !== todo && !t.done && t.day === todo.day
+  );
+  let idx = dayActives.length;
+  if (todo.time) {
+    const later = dayActives.findIndex((t) => (t.time ?? "~") > todo.time);
+    if (later !== -1) idx = later;
+  }
+  dayActives.splice(idx, 0, todo);
+  dayActives.forEach((t, i) => {
+    t.order = i;
+  });
 }
 
 function matchesDay(todo) {
@@ -285,7 +320,9 @@ function refreshVisibility() {
 function createNode(todo) {
   const li = document.createElement("li");
   li.className = `item c${todo.color % PALETTE_SIZE}`;
+  li.dataset.id = todo.id;
   if (todo.done) li.classList.add("done");
+  li.addEventListener("pointerdown", (e) => initDrag(todo, li, e));
 
   const check = document.createElement("button");
   check.className = "check";
@@ -333,8 +370,17 @@ function addTodo(raw) {
   const { text, day, time } = parseInput(raw, selectedDay);
   const last = todos[todos.length - 1];
   const color = last ? (last.color + 1) % PALETTE_SIZE : 0;
-  const todo = { id: Date.now().toString(36), text, done: false, color, day, time };
+  const todo = {
+    id: Date.now().toString(36),
+    text,
+    done: false,
+    color,
+    day,
+    time,
+    order: 0,
+  };
   todos.push(todo);
+  assignOrder(todo);
   save();
 
   const node = createNode(todo);
@@ -400,6 +446,7 @@ function startEdit(todo, li, label) {
       if (parsed.text !== value) {
         todo.day = parsed.day;
         todo.time = parsed.time;
+        assignOrder(todo);
       }
       label.textContent = todo.text;
       renderWhen(todo);
@@ -423,6 +470,132 @@ function startEdit(todo, li, label) {
 
   label.addEventListener("blur", onBlur);
   label.addEventListener("keydown", onKey);
+}
+
+/* ---------- Drag to reorder ---------- */
+
+const DRAG_THRESHOLD = 6;
+const ITEM_GAP = 8; // matches .item margin-bottom
+
+function dragCandidates() {
+  return [...list.children].filter(
+    (n) =>
+      !n.hidden && n.dataset.vis !== "hiding" && !n.classList.contains("done")
+  );
+}
+
+function initDrag(todo, li, e) {
+  if (e.button !== 0 || e.pointerType === "touch") return; // touch keeps scrolling
+  if (todo.done) return;
+  if (e.target.closest("button") || e.target.isContentEditable) return;
+  e.preventDefault(); // stop text selection from swallowing the gesture
+
+  const startY = e.clientY;
+  const pointerId = e.pointerId;
+  let started = false;
+  let items = [];
+  let origIndex = 0;
+  let tops = [];
+  let heights = [];
+  let minOffset = 0;
+  let maxOffset = 0;
+
+  const onMove = (ev) => {
+    if (ev.pointerId !== pointerId) return;
+    const offset = ev.clientY - startY;
+    if (!started) {
+      if (Math.abs(offset) < DRAG_THRESHOLD) return;
+      started = true;
+      items = dragCandidates();
+      origIndex = items.indexOf(li);
+      if (origIndex === -1) {
+        cleanup();
+        return;
+      }
+      li.setPointerCapture(pointerId);
+      tops = items.map((n) => n.getBoundingClientRect().top);
+      heights = items.map((n) => n.offsetHeight);
+      // The extra pixel keeps the strict center comparisons decisive when
+      // the drag is clamped flush against either end of the list.
+      minOffset = tops[0] - tops[origIndex] - 1;
+      maxOffset =
+        tops[items.length - 1] +
+        heights[items.length - 1] -
+        (tops[origIndex] + heights[origIndex]) +
+        1;
+      li.classList.add("dragging");
+      document.body.classList.add("is-dragging");
+    }
+    const clamped = Math.min(maxOffset, Math.max(minOffset, offset));
+    li.style.transform = `translateY(${clamped}px)`;
+    const center = tops[origIndex] + heights[origIndex] / 2 + clamped;
+    for (let i = 0; i < items.length; i++) {
+      if (i === origIndex) continue;
+      const sibCenter = tops[i] + heights[i] / 2;
+      let shift = 0;
+      if (i < origIndex && center < sibCenter) {
+        shift = heights[origIndex] + ITEM_GAP;
+      } else if (i > origIndex && center > sibCenter) {
+        shift = -(heights[origIndex] + ITEM_GAP);
+      }
+      items[i].style.transform = shift ? `translateY(${shift}px)` : "";
+    }
+  };
+
+  const finish = (commit) => {
+    cleanup();
+    if (!started) return;
+    document.body.classList.remove("is-dragging");
+    if (commit) {
+      const center = li.getBoundingClientRect().top + li.offsetHeight / 2;
+      let newIndex = 0;
+      for (let i = 0; i < items.length; i++) {
+        if (i === origIndex) continue;
+        if (tops[i] + heights[i] / 2 < center) newIndex++;
+      }
+      const seq = items.map((n) => todos.find((t) => t.id === n.dataset.id));
+      const [dragged] = seq.splice(origIndex, 1);
+      seq.splice(newIndex, 0, dragged);
+      seq.forEach((t, i) => {
+        t.order = i;
+      });
+      save();
+    }
+    // Settle: snapshot where everything is, clear drag styles, put the DOM
+    // in its committed order, then FLIP from the snapshot into place.
+    const before = new Map(
+      items.map((n) => [n, n.getBoundingClientRect().top])
+    );
+    for (const n of items) n.style.transform = "";
+    li.classList.remove("dragging");
+    applyOrder();
+    if (reduceMotion.matches) return;
+    for (const n of items) {
+      const delta = before.get(n) - n.getBoundingClientRect().top;
+      if (delta) {
+        n.animate(
+          [{ transform: `translateY(${delta}px)` }, { transform: "none" }],
+          { duration: 250, easing: EASE_OUT }
+        );
+      }
+    }
+  };
+
+  const onUp = (ev) => {
+    if (ev.pointerId === pointerId) finish(true);
+  };
+  const onCancel = (ev) => {
+    if (ev.pointerId === pointerId) finish(false);
+  };
+  const cleanup = () => {
+    removeEventListener("pointermove", onMove);
+    removeEventListener("pointerup", onUp);
+    removeEventListener("pointercancel", onCancel);
+  };
+
+  addEventListener("pointermove", onMove);
+  addEventListener("pointerup", onUp);
+  addEventListener("pointercancel", onCancel);
 }
 
 /* ---------- Day strip and filters ---------- */
