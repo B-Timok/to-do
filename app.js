@@ -83,6 +83,7 @@ function load() {
       color: i % PALETTE_SIZE,
       day: todayKey(),
       time: null,
+      repeat: null,
       ...t,
     }));
     // Items saved before manual ordering existed get numbered by the old
@@ -164,17 +165,38 @@ function visibleNow(todo) {
 
 /* ---------- @ parsing ---------- */
 
+function weekdayKey(name) {
+  return keyPlus((WEEKDAYS[name] - new Date().getDay() + 7) % 7);
+}
+
 function parseSpec(spec, defaultDay) {
   let day = null;
   let time = null;
-  for (const token of spec.toLowerCase().split(/\s+/)) {
-    if (!token) continue;
+  let repeat = null;
+  const tokens = spec.toLowerCase().split(/\s+/).filter(Boolean);
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
     if (token === "today") {
       day = todayKey();
     } else if (token === "tomorrow" || token === "tmrw" || token === "tom") {
       day = keyPlus(1);
     } else if (token in WEEKDAYS) {
-      day = keyPlus((WEEKDAYS[token] - new Date().getDay() + 7) % 7);
+      day = weekdayKey(token);
+    } else if (token === "daily") {
+      repeat = "daily";
+    } else if (token === "weekly") {
+      repeat = "weekly";
+    } else if (token === "weekdays") {
+      repeat = "weekdays";
+    } else if (token === "every") {
+      const next = tokens[++i];
+      if (next === "day") repeat = "daily";
+      else if (next === "week") repeat = "weekly";
+      else if (next === "weekday") repeat = "weekdays";
+      else if (next in WEEKDAYS) {
+        repeat = "weekly";
+        day = weekdayKey(next);
+      } else return null;
     } else {
       const m = token.match(/^(\d{1,2})(?::(\d{2}))?(am|pm)?$/);
       if (!m) return null;
@@ -187,12 +209,12 @@ function parseSpec(spec, defaultDay) {
       time = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
     }
   }
-  if (day === null && time === null) return null;
-  return { day: day ?? defaultDay, time };
+  if (day === null && time === null && repeat === null) return null;
+  return { day: day ?? defaultDay, time, repeat };
 }
 
-// Splits "Call the bank @ fri 3pm" into text plus day/time. An @ chunk
-// that doesn't parse is left in the text untouched.
+// Splits "Call the bank @ fri 3pm" into text plus day/time/repeat. An @
+// chunk that doesn't parse is left in the text untouched.
 function parseInput(raw, defaultDay) {
   const match = raw.match(/(?:^|\s)@([^@]*)$/);
   if (match) {
@@ -200,7 +222,29 @@ function parseInput(raw, defaultDay) {
     const parsed = parseSpec(match[1].trim(), defaultDay);
     if (parsed && text) return { text, ...parsed };
   }
-  return { text: raw.trim(), day: defaultDay, time: null };
+  return { text: raw.trim(), day: defaultDay, time: null, repeat: null };
+}
+
+// First matching day strictly after the task's day (or today if the task
+// is overdue): daily is the next day, weekly the same weekday next time,
+// weekdays the next Monday-to-Friday day.
+function nextOccurrence(todo) {
+  const anchor = dateOf(todo.day).getDay();
+  const today = todayKey();
+  const d = dateOf(todo.day > today ? todo.day : today);
+  do {
+    d.setDate(d.getDate() + 1);
+  } while (
+    (todo.repeat === "weekly" && d.getDay() !== anchor) ||
+    (todo.repeat === "weekdays" && (d.getDay() === 0 || d.getDay() === 6))
+  );
+  return toKey(d);
+}
+
+function friendlyDay(key) {
+  if (key === todayKey()) return "Today";
+  if (key === keyPlus(1)) return "Tomorrow";
+  return weekdayLabel(key);
 }
 
 /* ---------- Animation helpers ---------- */
@@ -335,26 +379,39 @@ function hideToast() {
   toastEl.classList.remove("show");
 }
 
-function pushUndo(removed, message) {
-  undoStack.push(removed);
+function pushUndo(entry, message) {
+  undoStack.push(entry);
   if (undoStack.length > 20) undoStack.shift();
   showToast(message);
 }
 
 function undo() {
-  const removed = undoStack.pop();
-  if (!removed) return;
-  todos.push(...removed);
-  save();
-  for (const todo of removed) {
-    const node = createNode(todo);
-    node.hidden = true;
-    list.appendChild(node);
+  const entry = undoStack.pop();
+  if (!entry) return;
+  let follow;
+  if (entry.kind === "delete") {
+    todos.push(...entry.todos);
+    for (const todo of entry.todos) {
+      const node = createNode(todo);
+      node.hidden = true;
+      list.appendChild(node);
+    }
+    follow = entry.todos;
+  } else {
+    // "roll": put a repeating task back on the day it was completed from.
+    const todo = entry.todo;
+    todo.done = false;
+    todo.day = entry.day;
+    todo.order = entry.order;
+    nodes.get(todo.id).classList.remove("done");
+    renderWhen(todo);
+    follow = [todo];
   }
+  save();
   applyOrder();
   // If the restored tasks live outside the current view, follow them.
-  if (!removed.some(visibleNow)) {
-    const first = removed[0];
+  if (!follow.some(visibleNow)) {
+    const first = follow[0];
     if (!matchesDay(first)) setDayState(first.day);
     if (!matchesFilter(first)) setFilterState("all");
   }
@@ -414,13 +471,15 @@ function renderWhen(todo) {
   const parts = [];
   if (overdue) parts.push(weekdayLabel(todo.day));
   if (todo.time) parts.push(formatTime(todo.time));
+  if (todo.repeat) parts.push("↻");
   el.textContent = parts.join(" ");
   el.hidden = parts.length === 0;
   el.classList.toggle("overdue", overdue);
+  el.title = todo.repeat ? `Repeats ${todo.repeat}` : "";
 }
 
 function addTodo(raw) {
-  const { text, day, time } = parseInput(raw, selectedDay);
+  const { text, day, time, repeat } = parseInput(raw, selectedDay);
   const last = todos[todos.length - 1];
   const color = last ? (last.color + 1) % PALETTE_SIZE : 0;
   const todo = {
@@ -430,6 +489,7 @@ function addTodo(raw) {
     color,
     day,
     time,
+    repeat,
     order: 0,
   };
   todos.push(todo);
@@ -447,11 +507,48 @@ function addTodo(raw) {
   refreshVisibility();
 }
 
+const rollTimers = new Map(); // todo id -> pending recurrence roll
+
 function toggle(todo, node) {
+  clearTimeout(rollTimers.get(todo.id));
+  rollTimers.delete(todo.id);
+
   todo.done = !todo.done;
   node.classList.toggle("done", todo.done);
   renderWhen(todo);
   save();
+
+  // Completing a repeating task lets the check play, then rolls it
+  // forward to its next occurrence instead of leaving it done. Toggling
+  // again inside the pause cancels the roll.
+  if (todo.repeat && todo.done) {
+    rollTimers.set(
+      todo.id,
+      setTimeout(() => {
+        rollTimers.delete(todo.id);
+        const entry = { kind: "roll", todo, day: todo.day, order: todo.order };
+        const next = nextOccurrence(todo);
+        todo.done = false;
+        todo.day = next;
+        assignOrder(todo);
+        save();
+        node.classList.remove("done");
+        renderWhen(todo);
+        pushUndo(entry, `Done. Next: ${friendlyDay(next)}`);
+        if (visibleNow(todo)) {
+          reorderWithFlip();
+          refreshChrome();
+        } else {
+          hideAway(node).then(() => {
+            applyOrder();
+            refreshChrome();
+          });
+        }
+      }, reduceMotion.matches ? 0 : 650)
+    );
+    refreshChrome();
+    return;
+  }
 
   if (visibleNow(todo)) {
     reorderWithFlip();
@@ -475,7 +572,7 @@ async function remove(todo, node) {
   todos = todos.filter((t) => t !== todo);
   nodes.delete(todo.id);
   save();
-  pushUndo([todo], undoLabel(todo));
+  pushUndo({ kind: "delete", todos: [todo] }, undoLabel(todo));
   await collapse(node, { slide: true });
   node.remove();
   refreshChrome();
@@ -496,10 +593,12 @@ function startEdit(todo, li, label) {
     if (commit && value) {
       const parsed = parseInput(value, todo.day);
       todo.text = parsed.text;
-      // Only reschedule when the edit actually contained an @ chunk.
+      // Only reschedule when the edit actually contained an @ chunk;
+      // the chunk replaces the whole schedule, repeat included.
       if (parsed.text !== value) {
         todo.day = parsed.day;
         todo.time = parsed.time;
+        todo.repeat = parsed.repeat;
         assignOrder(todo);
       }
       label.textContent = todo.text;
@@ -953,12 +1052,13 @@ function refreshComposerChips() {
   const value = input.value;
   enterHint.classList.toggle("show", value.trim().length > 0);
 
-  const { day, time } = parseInput(value, selectedDay);
+  const { day, time, repeat } = parseInput(value, selectedDay);
   const parts = [];
   if (day !== selectedDay) {
     parts.push(day === todayKey() ? "Today" : weekdayLabel(day));
   }
   if (time) parts.push(formatTime(time));
+  if (repeat) parts.push(`↻ ${repeat}`);
   parseChip.textContent = parts.join(" ");
   parseChip.classList.toggle("show", parts.length > 0);
 }
@@ -992,7 +1092,7 @@ clearBtn.addEventListener("click", () => {
   todos = todos.filter((t) => !done.includes(t));
   save();
   pushUndo(
-    done,
+    { kind: "delete", todos: done },
     done.length === 1 ? undoLabel(done[0]) : `Cleared ${done.length} done tasks`
   );
   done.forEach((todo, i) => {

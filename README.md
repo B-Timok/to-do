@@ -6,6 +6,7 @@ A minimal to-do list on a pure black background. Each task gets a flat accent co
 
 - **Add**: type and hit enter
 - **Schedule**: end a task with `@` to give it a time, a day, or both. `Call the bank @ 3pm`, `Pack bags @ fri 6pm`, `Dentist @ tomorrow 8am`. A chip previews the parsed day and time as you type. Bare hours like `@ 3` read as 3pm; use `am` or 24-hour times like `@ 15:00` otherwise
+- **Repeat**: add `daily`, `weekly`, `weekdays`, or `every mon` to the `@` chunk. `Gym @ every mon 6pm`, `Journal @ daily 9pm`. Completing a repeating task plays the check, then rolls it to its next occurrence (weekly keeps its weekday, weekdays skips weekends); the toast names the next day and offers Undo. Repeating tasks wear a small repeat mark on their chip. Editing with a plain `@` chunk replaces the whole schedule, repeat included
 - **Days**: the strip under the header shows the next 7 days. Click a day to view it or to add tasks to it. Days with open tasks get a dot. Tasks from past days roll into Today, marked with their original day
 - **Reorder**: drag a task up or down to hand-order the day. Timed tasks still slot in by their time when added; a drag overrides that
 - **Complete**: click the ring; done tasks sink to the bottom
