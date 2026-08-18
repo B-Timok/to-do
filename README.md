@@ -1,15 +1,15 @@
 # todo.
 
-A minimal to-do list on a pure black background. Each task gets a flat accent color — yellow, light blue, orange, lime, purple, peach — in rotation. No frameworks, no build step, no dependencies.
+A minimal to-do list on a pure black background. Each task gets a flat accent color (yellow, light blue, orange, lime, purple, peach) in rotation. No frameworks, no build step, no dependencies.
 
 ## Features
 
-- **Add** — type and hit enter
-- **Complete** — click the ring; done tasks sink to the bottom
-- **Edit** — double-click a task's text
-- **Delete** — hover a task and hit ×
-- **Filter** — All / Active / Done, plus one-click "Clear done"
-- **Persistence** — tasks are saved to `localStorage`
+- **Add**: type and hit enter
+- **Complete**: click the ring; done tasks sink to the bottom
+- **Edit**: double-click a task's text
+- **Delete**: hover a task and hit the x
+- **Filter**: All / Active / Done, plus one-click "Clear done"
+- **Persistence**: tasks are saved to `localStorage`
 
 ## Animation details
 
@@ -21,7 +21,7 @@ A minimal to-do list on a pure black background. Each task gets a flat accent co
 
 ## Running
 
-There's no build step — opening `index.html` in a browser works. For a local server:
+There's no build step, so opening `index.html` in a browser works. For a local server:
 
 ```sh
 npm run dev

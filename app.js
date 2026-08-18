@@ -23,8 +23,8 @@ let filter = "all";
 const nodes = new Map(); // todo id -> <li>
 
 const EMPTY_MESSAGES = {
-  all: "Nothing here yet — add your first task above.",
-  active: "All caught up ✨",
+  all: "Nothing here yet. Add your first task above.",
+  active: "All caught up.",
   done: "Nothing checked off yet.",
 };
 
